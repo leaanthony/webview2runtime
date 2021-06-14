@@ -9,6 +9,15 @@ This package provides the following capabilities:
 
 ## Usage
 
+The general workflow should be:
+
+  - Check if there's a version installed using `GetInstalledVersion()`
+  - If so, check it's new enough to support your application using `IsOlderThan()` 
+  - If not, prompt the user if they wish to install/update the runtime using `Confirm()`
+  - If the user wishes to proceed, Install the runtime using `InstallUsingBootstrapper()`
+
+### Example
+
 ```go
 package mypackage
 
