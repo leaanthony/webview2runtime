@@ -1,10 +1,12 @@
 # WebView2Runtime
 
-This package provides the following capabilities:
+This package provides the following capabilities for managing and installing the WebView2 runtime:
 
-- Retrieve version of installed WebView2 runtime, if installed
+- Retrieve version of installed WebView2 runtime
 - Determine if the installed version is older than the required version
-- Trigger an installation of the runtime using the Microsoft Bootstrapper
+- Download and run the official Microsoft Bootstrapper
+- Run an embedded version of the official Microsoft Bootstrapper
+- Open a browser to the WebView2 download page
 - Utility methods for user notifications and confirmations
 
 ## Usage
@@ -13,8 +15,11 @@ The general workflow should be:
 
 - Check if there's a version installed using `GetInstalledVersion()`
 - If so, check it's new enough to support your application using `IsOlderThan()`
-- If not, prompt the user if they wish to install/update the runtime using `Confirm()`
-- If the user wishes to proceed, Install the runtime using `InstallUsingBootstrapper()`
+- Decide what strategy you're comfortable with to inform the user / install the runtime.
+
+## Documentation
+
+Please consult the [package documentation](https://pkg.go.dev/github.com/leaanthony/webview2runtime).
 
 ### Example
 
