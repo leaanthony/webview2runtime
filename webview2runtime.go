@@ -3,6 +3,7 @@
 package webview2runtime
 
 import (
+	_ "embed"
 	"golang.org/x/sys/windows/registry"
 	"io"
 	"net/http"
@@ -13,6 +14,9 @@ import (
 	"syscall"
 	"unsafe"
 )
+
+//go:embed MicrosoftEdgeWebview2Setup.exe
+var setupexe []byte
 
 // Info contains all the information about an installation of the webview2 runtime.
 type Info struct {
@@ -71,39 +75,71 @@ func getKeyValue(k registry.Key, name string) string {
 	return result
 }
 
-// InstallUsingBootstrapper will download the bootstrapper from Microsoft and run it to install
-// the latest version of the runtime.
-// Returns true if the installer ran successfully.
-// Returns an error if something goes wrong
-func InstallUsingBootstrapper() (result bool, err error) {
+func downloadBootstrapper() (string, error) {
 	bootstrapperURL := `https://go.microsoft.com/fwlink/p/?LinkId=2124703`
 	installer := filepath.Join(os.TempDir(), `MicrosoftEdgeWebview2Setup.exe`)
 
 	// Download installer
 	out, err := os.Create(installer)
+	defer out.Close()
 	if err != nil {
-		return false, err
+		return "", err
 	}
-	defer func(out *os.File) {
-		err = out.Close()
-	}(out)
 	resp, err := http.Get(bootstrapperURL)
+	defer resp.Body.Close()
 	if err != nil {
-		return false, err
+		err = out.Close()
+		return "", err
 	}
-	defer func(Body io.ReadCloser) {
-		err = Body.Close()
-	}(resp.Body)
 	_, err = io.Copy(out, resp.Body)
 	if err != nil {
-		return false, err
+		return "", err
 	}
 
-	err = out.Close()
+	return installer, nil
+}
+
+// InstallUsingEmbeddedBootstrapper will download the bootstrapper from Microsoft and run it to install
+// the latest version of the runtime.
+// Returns true if the installer ran successfully.
+// Returns an error if something goes wrong
+func InstallUsingEmbeddedBootstrapper() (bool, error) {
+
+	installer := filepath.Join(os.TempDir(), `MicrosoftEdgeWebview2Setup.exe`)
+	err := os.WriteFile(installer, setupexe, 0755)
+	if err != nil {
+		return false, err
+	}
+	result, err := runInstaller(installer)
 	if err != nil {
 		return false, err
 	}
 
+	return result, os.Remove(installer)
+
+}
+
+// InstallUsingBootstrapper will extract the embedded bootstrapper from Microsoft and run it to install
+// the latest version of the runtime.
+// Returns true if the installer ran successfully.
+// Returns an error if something goes wrong
+func InstallUsingBootstrapper() (bool, error) {
+
+	installer, err := downloadBootstrapper()
+	if err != nil {
+		return false, err
+	}
+
+	result, err := runInstaller(installer)
+	if err != nil {
+		return false, err
+	}
+
+	return result, os.Remove(installer)
+
+}
+
+func runInstaller(installer string) (bool, error) {
 	// Credit: https://stackoverflow.com/a/10385867
 	cmd := exec.Command(installer)
 	if err := cmd.Start(); err != nil {
@@ -158,4 +194,10 @@ func MessageBox(caption string, title string, flags uint) (int, error) {
 		uintptr(flags))
 
 	return int(ret), nil
+}
+
+// OpenInstallerDownloadWebpage will open the browser on the WebView2 download page
+func OpenInstallerDownloadWebpage() error {
+	cmd := exec.Command("rundll32", "url.dll,FileProtocolHandler", "https://developer.microsoft.com/en-us/microsoft-edge/webview2/")
+	return cmd.Run()
 }
