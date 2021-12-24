@@ -1,16 +1,17 @@
+//go:build windows
 // +build windows
 
 package webview2runtime
 
 import (
 	_ "embed"
-	"golang.org/x/sys/windows/registry"
+	"fmt"
+	"golang.org/x/sys/windows"
 	"io"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"syscall"
 	"unsafe"
 )
@@ -49,32 +50,30 @@ func (i *Info) IsOlderThan(requiredVersion string) (bool, error) {
 
 // GetInstalledVersion returns the installed version of the webview2 runtime.
 // If there is no version installed, a blank string is returned.
-func GetInstalledVersion() *Info {
-	var regkey = `SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}`
-	if runtime.GOARCH == "386" {
-		regkey = `SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}`
-	}
+func GetInstalledVersion() string {
+	var mod = syscall.NewLazyDLL("WebView2Loader")
+	var GetAvailableCoreWebView2BrowserVersionString = mod.NewProc("GetAvailableCoreWebView2BrowserVersionString")
 
-	k, err := registry.OpenKey(registry.LOCAL_MACHINE, regkey, registry.QUERY_VALUE)
+	err := mod.Load()
+	if err == nil {
+		err = GetAvailableCoreWebView2BrowserVersionString.Find()
+	}
 	if err != nil {
-		// Cannot open key = not installed
-		return nil
+		return ""
 	}
 
-	info := &Info{}
-	info.Location = getKeyValue(k, "location")
-	info.Name = getKeyValue(k, "name")
-	info.Version = getKeyValue(k, "pv")
-	info.SilentUninstall = getKeyValue(k, "SilentUninstall")
-
-	return info
+	var result *uint16
+	res, _, _ := GetAvailableCoreWebView2BrowserVersionString.Call(
+		uintptr(unsafe.Pointer(nil)),
+		uintptr(unsafe.Pointer(&result)),
+	)
+	if res != 0 {
+		return ""
+	}
+	version := windows.UTF16PtrToString(result)
+	windows.CoTaskMemFree(unsafe.Pointer(result))
+	return version
 }
-
-func getKeyValue(k registry.Key, name string) string {
-	result, _, _ := k.GetStringValue(name)
-	return result
-}
-
 func downloadBootstrapper() (string, error) {
 	bootstrapperURL := `https://go.microsoft.com/fwlink/p/?LinkId=2124703`
 	installer := filepath.Join(os.TempDir(), `MicrosoftEdgeWebview2Setup.exe`)
@@ -140,17 +139,10 @@ func InstallUsingBootstrapper() (bool, error) {
 }
 
 func runInstaller(installer string) (bool, error) {
-	// Credit: https://stackoverflow.com/a/10385867
-	cmd := exec.Command(installer)
-	if err := cmd.Start(); err != nil {
+	err := ShellExecuteAndWait(0, "runas", installer, "", os.Getenv("TMP"), syscall.SW_NORMAL)
+	if err != nil {
+		fmt.Println(err)
 		return false, err
-	}
-	if err := cmd.Wait(); err != nil {
-		if exiterr, ok := err.(*exec.ExitError); ok {
-			if status, ok := exiterr.Sys().(syscall.WaitStatus); ok {
-				return status.ExitStatus() == 0, nil
-			}
-		}
 	}
 	return true, nil
 }
